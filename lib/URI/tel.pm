@@ -1,9 +1,21 @@
+##----------------------------------------------------------------------------
+## tel.pm
+## Version 0.1
+## Copyright(c) 2016-2018 Jacques Deguest
+## Author: Jacques Deguest <jack@deguest.jp>
+## Created 2016/02/12
+## Modified 2018/03/31
+## All rights reserved.
+## 
+## This program is free software; you can redistribute it and/or modify it 
+## under the same terms as Perl itself.
+##----------------------------------------------------------------------------
 package URI::tel;
 BEGIN
 {
 	use strict;
     our( $VERSION, @ISA, @EXPORT, @EXPORT_OK, %EXPORT_TAGS );
-    our( $VERBOSE, $DEBUG );
+    our( $VERBOSE, $DEBUG, $ERROR );
     our( $RESERVED, $MARK, $UNRESERVED, $PCT_ENCODED, $URIC, $ALPHA, $DIGIT, $ALPHANUM, $HEXDIG );
     our( $PARAM_UNRESERVED, $VISUAL_SEPARATOR, $PHONEDIGIT, $GLOBAL_NUMBER_DIGITS, $PARAMCHAR, $DOMAINLABEL, $TOPLABEL, $DOMAINNAME, $DESCRIPTOR, $PNAME, $PVALUE, $PARAMETER, $EXTENSION, $ISDN_SUBADDRESS, $CONTEXT, $PAR, $PHONEDIGIT_HEX, $GLOBAL_NUMBER, $LOCAL_NUMBER, $OTHER, $TEL_SUBSCRIBER, $TEL_URI );
     our( $COUNTRIES );
@@ -11,7 +23,7 @@ BEGIN
     @EXPORT      = qw( );
     %EXPORT_TAGS = ();
     @EXPORT_OK   = qw( );
-    $VERSION     = '0.1';
+    $VERSION     = '0.2';
 	use overload ('""'     => 'as_string',
 				  '=='     => sub { _obj_eq(@_) },
 				  '!='     => sub { !_obj_eq(@_) },
@@ -20,6 +32,7 @@ BEGIN
 };
 
 {
+	#$RESERVED   			= qr{[\[\;\/\?\:\@\&\=\+\$\,\[\]]+};
 	$RESERVED   			= q{[;/?:@&=+$,[]+};
 	$MARK       			= q{-_.!~*'()};                                    #'; emacs
 	$UNRESERVED 			= qq{A-Za-z0-9\Q$MARK\E};
@@ -27,13 +40,19 @@ BEGIN
 	$PCT_ENCODED			= qr{\%[0-9A-Fa-f]{2}};
 	#$URIC       = quotemeta( $RESERVED ) . $UNRESERVED . "%";
 	$URIC					= qr{(?:[\Q$RESERVED\E]+|[$UNRESERVED]+|(?:$PCT_ENCODED)+)};
+# 	$ALPHA 	    			= qr{A-Za-z};
+# 	$DIGIT					= qr{\d};
 	$ALPHA 	    			= qr{A-Za-z};
 	$DIGIT					= qq{0-9};
+# 	$ALPHANUM   			= qr{A-Za-z\d};
 	$ALPHANUM   			= qq{A-Za-z0-9};
+# 	$HEXDIG	    			= qr{\dA-F};
 	$HEXDIG	    			= qr{\dA-F};
+# 	$PARAM_UNRESERVED 		= qr{[\[\]\/\:\&\+\$]+};
 	$PARAM_UNRESERVED 		= q{[]/:&+$};
 	$VISUAL_SEPARATOR 		= q(-.());
 	## DIGIT / [ visual-separator ]
+# 	$PHONEDIGIT		  		= qr{$DIGIT\Q$VISUAL_SEPARATOR\E};
 	$PHONEDIGIT		  		= qq{$DIGIT\Q$VISUAL_SEPARATOR\E};
 	## "+" *phonedigit DIGIT *phonedigit
 	$GLOBAL_NUMBER_DIGITS	= qr{\+[$PHONEDIGIT]*[$DIGIT]+[$PHONEDIGIT]*};
@@ -80,6 +99,7 @@ BEGIN
 	## Like +1-800-LAWYR-UP => +1-800-52997-87
 	$VANITY					= qr{(\+?[$PHONEDIGIT]*[A-Z0-9\Q$VISUAL_SEPARATOR\E]+[$PHONEDIGIT]*)};
 	$TEL_SUBSCRIBER	  		= qr{(?:$VANITY|$GLOBAL_NUMBER|$LOCAL_NUMBER|$OTHER)}xs;
+	##$TEL_SUBSCRIBER	  = qr{(?:$GLOBAL_NUMBER)};
 	$TEL_URI		  		= qr{(?:tel\:)?$TEL_SUBSCRIBER};
 	# https://tools.ietf.org/search/rfc3966#section-3
 	
@@ -118,7 +138,8 @@ sub new
 	}
 	else
 	{
-		print( "Clueless what number '$str' is.\n" );
+		$ERROR = "Unknown telephone number '$str'.";
+		warn( $ERROR );
 	}
 	## The component name for each match
 	@$temp{ @names } = @matches;
@@ -127,10 +148,10 @@ sub new
 	
 	my $hash  = {
 	'original'		=> ( $orig ne $str ) ? $orig : $temp->{ 'all' },
-	'is_global'		=> $temp->{ 'type' } eq 'global',
-	'is_local'		=> ( $temp->{ 'type' } eq 'local' or $temp->{ 'type' } eq 'other' ),
-	'is_other'		=> $temp->{ 'type' } eq 'other',
-	'is_vanity'		=> $temp->{ 'type' } eq 'vanity',
+	'is_global'		=> $temp->{ 'type' } eq 'global' ? 1 : 0,
+	'is_local'		=> ( $temp->{ 'type' } eq 'local' or $temp->{ 'type' } eq 'other' ) ? 1 : 0,
+	'is_other'		=> $temp->{ 'type' } eq 'other' ? 1 : 0,
+	'is_vanity'		=> $temp->{ 'type' } eq 'vanity' ? 1 : 0,
 	'subscriber'	=> $temp->{ 'subscriber' },
 	'params'		=> $temp->{ 'params' },
 	'last_param'	=> $temp->{ 'last_param' } ? $temp->{ 'last_param' } : $temp->{ 'last_param1' } ? $temp->{ 'last_param1' } : $temp->{ 'last_param2' },
@@ -164,9 +185,10 @@ sub new
 			$priv->{ lc( $p ) } = $v;
 		}
 	}
-	$hash->{ 'private' } = $priv;
-	$hash->{ 'ext' } = $temp->{ 'ext' } if( !length( $hash->{ 'ext' } ) && !$hash->{ 'is_vanity' } );
-	$hash->{ 'ext' } =~ s/\D//gs;
+	$self->{ 'private' } = $priv;
+	$self->{ 'ext' } = $temp->{ 'ext' } if( !length( $hash->{ 'ext' } ) && !$self->{ 'is_vanity' } );
+	$self->{ 'ext' } =~ s/\D//gs;
+	$self->{ '_prepend_context' } = 0;
 	return( $self );
 }
 
@@ -174,20 +196,32 @@ sub as_string
 {
 	my $self = shift( @_ );
 	return( $self->{ 'cache' } ) if( length( $self->{ 'cache' } ) );
-	my $uri  = 'tel:' . $self->{ 'subscriber' };
+	my @uri = ( 'tel:' . $self->{ 'subscriber' } ) if( length( $self->{ 'subscriber' } ) );
 	my @params = ();
 	push( @params, sprintf( "ext=%s", $self->{ 'ext' } ) ) if( length( $self->{ 'ext' } ) );
 	push( @params, sprintf( "isub=%s", $self->{ 'isdn_subaddress' } ) ) if( length( $self->{ 'isdn_subaddress' } ) );
-	push( @params, sprintf( "phone-context=%s", $self->{ 'context' } ) ) if( length( $self->{ 'context' } ) );
+	if( length( $self->{ 'context' } ) )
+	{
+		if( $self->{ '_prepend_context' } && $self->{ 'subscriber' } !~ /^\+\d+/ )
+		{
+			@uri = ( 'tel:' . $self->{ 'context' } . '.' . $self->{ 'subscriber' } );
+		}
+		else
+		{
+			push( @params, sprintf( "phone-context=%s", $self->{ 'context' } ) );
+		}
+	}
 	my $priv = $self->{ 'private' };
 	foreach my $k ( sort( keys( %$priv ) ) )
 	{
 		push( @params, sprintf( "$k=%s", $priv->{ $k } ) ) if( length( $priv->{ $k } ) );
 	}
-	$uri .= ";" . join( ';', @params );
-	$self->{ 'cache' } = $uri;
-	return( $uri );
+	push( @uri, join( ';', @params ) ) if( scalar( @params ) );
+	$self->{ 'cache' } = join( ';', @uri );
+	return( $self->{ 'cache' } );
 }
+
+*letters2digits = \&aton;
 
 sub aton
 {
@@ -221,6 +255,29 @@ sub canonical
 	return( $uri );
 }
 
+sub cc2context
+{
+	my $self = shift( @_ );
+	my $cc   = uc( shift( @_ ) );
+	return( $self->error( "No country code provided." ) ) if( !length( $cc ) );
+	$self->_load_countries;
+	my $hash = $COUNTRIES;
+	foreach my $k ( sort( keys( %$hash ) ) )
+	{
+		## array ref
+		my $ref = $hash->{ $k };
+		foreach my $this ( @$ref )
+		{
+			if( $this->{ 'cc' } eq $cc )
+			{
+				return( '+' . $k );
+			}
+		}
+	}
+	## Nothing found
+	return( '' );
+}
+
 sub clone
 {
 	my $self  = shift( @_ );
@@ -252,38 +309,7 @@ sub context
 sub country
 {
 	my $self = shift( @_ );
-	if( !%$COUNTRIES )
-	{
-		my $in = 0;
-		my $hash = {};
-		my @data = <DATA>;
-		foreach ( @data )
-		{
-			chomp;
-			next unless( $in || /^\#{2} BEGIN DATA/ );
-			last if( /^\#{2} END DATA/ );
-			$in++;
-			next if( /^\#{2} BEGIN DATA/ );
-			my( $cc, $cc3, $name, $idd ) = split( /[[:blank:]]*\;[[:blank:]]*/, $_ );
-			my $keys = index( $idd, ',' ) != -1 ? [ split( /[[:blank:]]*\,[[:blank:]]*/, $idd ) ] : [ $idd ];
-			my $info = 
-			{
-			'iso' => $cc,
-			'iso3' => $cc3,
-			'name' => $name,
-			'idd' => $idd,
-			};
-			$info->{ 'idd' } = $keys;
-			foreach my $k ( @$keys )
-			{
-				my $k2 = $k;
-				$k2 =~ s/-//gs;
-				$hash->{ $k2 } = [] if( !exists( $hash->{ $k2 } ) );
-				push( @{$hash->{ $k2 }}, $info );
-			}
-		}
-		$COUNTRIES = $hash;
-	}
+	$self->_load_countries;
 	my $hash = $COUNTRIES;
 	my $idd = substr( $self->{ 'subscriber' }, 0, 1 ) eq '+' ? $self->{ 'subscriber' } : substr( $self->{ 'context' }, 0, 1 ) eq '+' ? $self->{ 'context' } : '';
 	## Something like +33(0)3-45-67-89-12 or +33-345-67-89-12
@@ -308,6 +334,30 @@ sub country
 	return( wantarray() ? () : [] );
 }
 
+sub error
+{
+    my $self  = shift( @_ );
+    my $level = 0;
+    my $caller = caller;
+    my $err   = join( '', @_ );
+    my $hash  = $self->_obj2h;
+    my $class = ref( $self ) || $self;
+    if( $err && length( $err ) )
+    {
+        my( $frame, $caller ) = ( $level, '' );
+        while( $caller = ( caller( $frame ) )[ 0 ] )
+        {
+            last if( $caller ne 'URI::tel' );
+            $frame++;
+        }
+        my( $pack, $file, $line ) = caller( $frame );
+        $err =~ s/\n$//gs;
+        $hash->{ 'error' } = ${ $class . '::ERROR' } = $err;
+        return( undef() );
+    }
+    return( $hash->{ 'error' } || $ERROR );
+}
+
 *extension = \&ext;
 
 sub ext
@@ -322,7 +372,6 @@ sub ext
 			return( undef() );
 		}
 		delete( $self->{ 'cache' } );
-		print( "Setting extension value '$val'\n" );
 		$self->{ 'ext' } = $val;
 	}
 	return( $self->{ 'ext' } );
@@ -369,6 +418,17 @@ sub isub
 sub original
 {
 	return( shift->{ 'original' } );
+}
+
+sub prepend_context
+{
+	my $self = shift( @_ );
+	if( @_ )
+	{
+		$self->{ '_prepend_context' } = shift( @_ );
+		delete( $self->{ 'cache' } );
+	}
+	return( $self->{ '_prepend_context' } );
 }
 
 sub private
@@ -435,6 +495,7 @@ sub type
 # https://tools.ietf.org/search/rfc3966#section-4
 sub _obj_eq 
 {
+    ##return overload::StrVal( $_[0] ) eq overload::StrVal( $_[1] );
     no overloading;
     my $self = shift( @_ );
     my $other = shift( @_ );
@@ -482,6 +543,63 @@ sub split_str
 		defined( $_ ) ? do{ $parts[$i] .= $_ } : do{ $i++ };
 	}
 	return( @parts );
+}
+
+sub _load_countries
+{
+	my $self = shift( @_ );
+	if( !%$COUNTRIES )
+	{
+		my $in = 0;
+		my $hash = {};
+		my @data = <DATA>;
+		foreach ( @data )
+		{
+			chomp;
+			next unless( $in || /^\#{2} BEGIN DATA/ );
+			last if( /^\#{2} END DATA/ );
+			$in++;
+			next if( /^\#{2} BEGIN DATA/ );
+			my( $cc, $cc3, $name, $idd ) = split( /[[:blank:]]*\;[[:blank:]]*/, $_ );
+			my $keys = index( $idd, ',' ) != -1 ? [ split( /[[:blank:]]*\,[[:blank:]]*/, $idd ) ] : [ $idd ];
+			my $info = 
+			{
+			'cc' => $cc,
+			'cc3' => $cc3,
+			'name' => $name,
+			'idd' => $idd,
+			};
+			$info->{ 'idd' } = $keys;
+			foreach my $k ( @$keys )
+			{
+				my $k2 = $k;
+				$k2 =~ s/-//gs;
+				$hash->{ $k2 } = [] if( !exists( $hash->{ $k2 } ) );
+				push( @{$hash->{ $k2 }}, $info );
+			}
+		}
+		$COUNTRIES = $hash;
+	}
+}
+
+sub _obj2h
+{
+    my $self = shift( @_ );
+    if( UNIVERSAL::isa( $self, 'HASH' ) )
+    {
+        return( $self );
+    }
+    elsif( UNIVERSAL::isa( $self, 'GLOB' ) )
+    {
+        return( \%{*$self} );
+    }
+    ## Because object may be accessed as My::Package->method or My::Package::method
+    ## there is not always an object available, so we need to fake it to avoid error
+    ## This is primarly itended for generic methods error(), errstr() to work under any conditions.
+    else
+    {
+        return( {} );
+    }
 }
 
 1;
@@ -680,7 +798,7 @@ This is a read-only method. It returns the type of the telephone number. The typ
 
 =head1 COPYRIGHT
 
-Copyright (c) 2016 Jacques Deguest
+Copyright (c) 2016-2018 Jacques Deguest E<lt>F<jack@deguest.jp>E<gt>
 
 This program is free software; you can redistribute it and/or modify it under the same terms as Perl itself.
 

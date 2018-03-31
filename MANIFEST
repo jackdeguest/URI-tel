@@ -1,0 +1,7 @@
+Makefile.PL
+MANIFEST
+META.yml
+README.md
+lib/URI/tel.pm
+t/00.load.t
+t/10.check.t
