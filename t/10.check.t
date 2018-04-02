@@ -3,7 +3,6 @@ BEGIN
 {
 	use strict;
 	use URI::tel;
-	use URI;
 	use Test::More tests => 199;
 };
 
