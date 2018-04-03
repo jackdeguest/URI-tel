@@ -23,7 +23,7 @@ BEGIN
     @EXPORT      = qw( );
     %EXPORT_TAGS = ();
     @EXPORT_OK   = qw( );
-    $VERSION     = '0.2';
+    $VERSION     = '0.2.2';
 	use overload ('""'     => 'as_string',
 				  '=='     => sub { _obj_eq(@_) },
 				  '!='     => sub { !_obj_eq(@_) },

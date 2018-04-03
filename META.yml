@@ -1,6 +1,6 @@
 # http://search.cpan.org/dist/CPAN-Meta/lib/CPAN/Meta/Spec.pm
 name:         URI-tel
-version:      0.1
+version:      0.2.2
 version_from: lib/URI/tel.pm
 installdirs:  site
 requires:
