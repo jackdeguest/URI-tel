@@ -18,12 +18,12 @@ BEGIN
     our( $VERBOSE, $DEBUG, $ERROR );
     our( $RESERVED, $MARK, $UNRESERVED, $PCT_ENCODED, $URIC, $ALPHA, $DIGIT, $ALPHANUM, $HEXDIG );
     our( $PARAM_UNRESERVED, $VISUAL_SEPARATOR, $PHONEDIGIT, $GLOBAL_NUMBER_DIGITS, $PARAMCHAR, $DOMAINLABEL, $TOPLABEL, $DOMAINNAME, $DESCRIPTOR, $PNAME, $PVALUE, $PARAMETER, $EXTENSION, $ISDN_SUBADDRESS, $CONTEXT, $PAR, $PHONEDIGIT_HEX, $GLOBAL_NUMBER, $LOCAL_NUMBER, $OTHER, $TEL_SUBSCRIBER, $TEL_URI );
-    our( $COUNTRIES );
+    our( $COUNTRIES, $IDD_RE );
     @ISA         = qw( );
     @EXPORT      = qw( );
     %EXPORT_TAGS = ();
     @EXPORT_OK   = qw( );
-    $VERSION     = '0.2.2';
+    $VERSION     = '0.3';
 	use overload ('""'     => 'as_string',
 				  '=='     => sub { _obj_eq(@_) },
 				  '!='     => sub { !_obj_eq(@_) },
@@ -125,6 +125,7 @@ sub new
 	{
 		$temp->{ 'type' } = 'local';
 		@names = qw( all subscriber params1 last_param1 ignore5 ignore6 context params2 last_param2 ignore10 ignore11 );
+		$temp->{ '_has_context_param' } = 1 if( length( $matches[6] ) );
 	}
 	elsif( @matches = $str =~ /^((?:tel\:)?$OTHER)$/ )
 	{
@@ -141,10 +142,37 @@ sub new
 		$ERROR = "Unknown telephone number '$str'.";
 		warn( $ERROR );
 	}
+	
+	if( $str =~ /^(?:tel\:)?\+/ )
+	{
+		## Extract the global idd
+		$this->_load_countries;
+		( my $str2 = $str ) =~ s/[\Q$VISUAL_SEPARATOR\E]+//g;
+		$str2 =~ s/^tel\://;
+		if( $str2 =~ /^\+($IDD_RE)/ )
+		{
+			my $idd = $1;
+			if( CORE::exists( $COUNTRIES->{ $idd } ) )
+			{
+				my $idds = $COUNTRIES->{ $idd }->[0]->{ 'idd' };
+				foreach my $thisIdd ( @$idds )
+				{
+					my $check = $thisIdd;
+					$check =~ s/\D//g;
+					if( $check eq $idd )
+					{
+						$temp->{ 'context' } = '+' . $thisIdd;
+						last;
+					}
+				}
+			}
+		}
+	}
+	
 	## The component name for each match
 	@$temp{ @names } = @matches;
 	$temp->{ 'params' } = $temp->{ 'params1' } ? $temp->{ 'params1' } : $temp->{ 'params2' } if( !length( $temp->{ 'params' } ) );
-	( $temp->{ 'context' } = $temp->{ 'context' } ) =~ s/;[^=]+=(.*?)$/$1/gs;
+	$temp->{ 'context' } =~ s/;[^=]+=(.*?)$/$1/gs;
 	
 	my $hash  = {
 	'original'		=> ( $orig ne $str ) ? $orig : $temp->{ 'all' },
@@ -179,6 +207,7 @@ sub new
 		elsif( lc( $p ) eq 'phone_context' )
 		{
 			$hash->{ 'context' } = $v;
+			$temp->{ '_has_context_param' } = 1;
 		}
 		else
 		{
@@ -188,7 +217,7 @@ sub new
 	$self->{ 'private' } = $priv;
 	$self->{ 'ext' } = $temp->{ 'ext' } if( !length( $hash->{ 'ext' } ) && !$self->{ 'is_vanity' } );
 	$self->{ 'ext' } =~ s/\D//gs;
-	$self->{ '_prepend_context' } = 0;
+	$self->{ '_prepend_context' } = $temp->{ '_has_context_param' } ? 0 : 1;
 	return( $self );
 }
 
@@ -202,13 +231,13 @@ sub as_string
 	push( @params, sprintf( "isub=%s", $self->{ 'isdn_subaddress' } ) ) if( length( $self->{ 'isdn_subaddress' } ) );
 	if( length( $self->{ 'context' } ) )
 	{
-		if( $self->{ '_prepend_context' } && $self->{ 'subscriber' } !~ /^\+\d+/ )
-		{
-			@uri = ( 'tel:' . $self->{ 'context' } . '.' . $self->{ 'subscriber' } );
-		}
-		else
+		if( !$self->{ '_prepend_context' } )
 		{
 			push( @params, sprintf( "phone-context=%s", $self->{ 'context' } ) );
+		}
+		elsif( $self->{ 'subscriber' } !~ /^\+\d+/ && $self->{ 'context' } !~ /[a-zA-Z]+/ )
+		{
+			@uri = ( 'tel:' . $self->{ 'context' } . '.' . $self->{ 'subscriber' } );
 		}
 	}
 	my $priv = $self->{ 'private' };
@@ -250,6 +279,8 @@ sub canonical
 	$uri->ext( $self->{ 'ext' } ) if( length( $self->{ 'ext' } ) );
 	$uri->isub( $self->{ 'isdn_subaddress' } ) if( length( $self->{ 'isdn_subaddress' } ) );
 	$uri->context( $self->{ 'context' } ) if( length( $self->{ 'context' } ) );
+	$uri->{_has_context_param} = $self->{_has_context_param};
+	$uri->{_prepend_context} = $self->{_prepend_context};
 	my $priv = $self->{ 'private' };
 	%{$uri->{ 'private' }} = %$priv;
 	return( $uri );
@@ -301,6 +332,8 @@ sub context
 			return( undef() );
 		}
 		delete( $self->{ 'cache' } );
+		$self->{ '_has_context_param' } = 1;
+		$self->{ '_prepend_context' } = 0;
 		$self->{ 'context' } = $str;
 	}
 	return( $self->{ 'context' } );
@@ -322,8 +355,7 @@ sub country
 	{
 		next if( length( $k ) > length( $idd ) );
 		## We found a match
-		## Although it is possible that more than one country match an international dialing code, we just return the first one found.
-		## Not a perfect solution though...
+		## We return all the countries that match the international prefix
 		if( substr( $idd, 0, length( $k ) ) eq $k )
 		{	
 			my $ref = $hash->{ $k };
@@ -579,6 +611,9 @@ sub _load_countries
 			}
 		}
 		$COUNTRIES = $hash;
+		my @list = sort{ $b <=> $a } keys( %$hash );
+		my $re_list = join( '|', @list );
+		$IDD_RE = qr{(?:$re_list)};
 	}
 }
 
@@ -763,7 +798,7 @@ It returns true or false.
 
 =item B<is_vanity>()
 
-Returns true or false whether the telephone number is a vanity number, such as C+1-800-LAWYERS>.
+Returns true or false whether the telephone number is a vanity number, such as C<+1-800-LAWYERS>.
 
 =item B<isub>( [ ISDN SUBADDRESS ] )
 

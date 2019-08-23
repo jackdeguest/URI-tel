@@ -9,11 +9,11 @@ BEGIN
 {
 	## Test to implement rfc3966 https://tools.ietf.org/search/rfc3966
 	my @tests = (
-	{ tel => "tel:+1-201-555-0123", global => 1, subscriber => '+1-201-555-0123', ext => undef(), context => undef(), isdn => '', params => {}, country => [qw( CA US )], uri => 'tel:+1-201-555-0123', canon => 'tel:+12015550123' },
-	{ tel => "tel:+1(800)555-1212", global => 1, subscriber => '+1(800)555-1212', ext => undef(), context => undef(), isdn => '', params => {}, country => [qw( CA US )], uri => 'tel:+1(800)555-1212', canon => 'tel:+18005551212' },
-	{ tel => "tel:+338005551212", global => 1, subscriber => '+338005551212', ext => undef(), context => undef(), isdn => '', params => {}, country => [qw( FR )], uri => 'tel:+338005551212', canon => 'tel:+338005551212' },
-	{ tel => "+18005553434;ext=123", global => 1, subscriber => '+18005553434', ext => 123, context => undef(), isdn => '', params => {}, country => [qw( CA US )], uri => 'tel:+18005553434;ext=123', canon => 'tel:+18005553434;ext=123' },
-	{ tel => "tel:+1-418-656-9254;ext=102", global => 1, subscriber => '+1-418-656-9254', ext => 102, context => undef(), isdn => '', params => {}, country => [qw( CA US )], uri => 'tel:+1-418-656-9254;ext=102', canon => 'tel:+14186569254;ext=102' },
+	{ tel => "tel:+1-201-555-0123", global => 1, subscriber => '+1-201-555-0123', ext => undef(), context => '+1', isdn => '', params => {}, country => [qw( CA US )], uri => 'tel:+1-201-555-0123', canon => 'tel:+12015550123' },
+	{ tel => "tel:+1(800)555-1212", global => 1, subscriber => '+1(800)555-1212', ext => undef(), context => '+1', isdn => '', params => {}, country => [qw( CA US )], uri => 'tel:+1(800)555-1212', canon => 'tel:+18005551212' },
+	{ tel => "tel:+338005551212", global => 1, subscriber => '+338005551212', ext => undef(), context => '+33', isdn => '', params => {}, country => [qw( FR )], uri => 'tel:+338005551212', canon => 'tel:+338005551212' },
+	{ tel => "+18005553434;ext=123", global => 1, subscriber => '+18005553434', ext => 123, context => '+1', isdn => '', params => {}, country => [qw( CA US )], uri => 'tel:+18005553434;ext=123', canon => 'tel:+18005553434;ext=123' },
+	{ tel => "tel:+1-418-656-9254;ext=102", global => 1, subscriber => '+1-418-656-9254', ext => 102, context => '+1', isdn => '', params => {}, country => [qw( CA US )], uri => 'tel:+1-418-656-9254;ext=102', canon => 'tel:+14186569254;ext=102' },
 	{ tel => "tel:911;phone-context=+1", global => 0, subscriber => '911', ext => undef(), context => '+1', isdn => '', params => {}, country => [qw( CA US )], uri => 'tel:911;phone-context=+1', canon => 'tel:911;phone-context=+1' },
 	{ tel => "tel:7042;phone-context=example.com", global => 0, subscriber => 7042, ext => undef(), context => 'example.com', isdn => '', params => {}, country => [], uri => 'tel:7042;phone-context=example.com', canon => 'tel:7042;phone-context=example.com' },
 	{ tel => "tel:863-1234;phone-context=+1-914-555", global => 0, subscriber => '863-1234', ext => undef(), context => '+1-914-555', isdn => '', params => {}, country => [qw( CA US )], uri => 'tel:863-1234;phone-context=+1-914-555', canon => 'tel:8631234;phone-context=+1-914-555' },
@@ -25,21 +25,21 @@ BEGIN
 	{ tel => "03-1234-5678x42", global => 0, subscriber => '03-1234-5678', ext => 42, context => undef(), isdn => '', params => {}, country => [], uri => 'tel:03-1234-5678;ext=42', canon => 'tel:0312345678;ext=42' },
 	{ tel => "432.555.1334", global => 0, subscriber => '432.555.1334', ext => undef(), context => undef(), isdn => '', params => {}, country => [], uri => 'tel:432.555.1334', canon => 'tel:4325551334' },
 	{ tel => "(800)ABCDEFG", global => 0, subscriber => '(800)ABCDEFG', ext => undef(), context => undef(), isdn => '', params => {}, country => [], uri => 'tel:(800)ABCDEFG', canon => 'tel:8002223334' },
-	{ tel => "+1-800-LAWYERS", global => 0, subscriber => '+1-800-LAWYERS', ext => undef(), context => undef(), isdn => '', params => {}, country => [qw( CA US )], uri => 'tel:+1-800-LAWYERS', canon => 'tel:+18005299377' },
+	{ tel => "+1-800-LAWYERS", global => 0, subscriber => '+1-800-LAWYERS', ext => undef(), context => '+1', isdn => '', params => {}, country => [qw( CA US )], uri => 'tel:+1-800-LAWYERS', canon => 'tel:+18005299377' },
 	{ tel => "(999) 555-4455 ext123", global => 0, subscriber => '(999)555-4455', ext => 123, context => undef(), isdn => '', params => {}, country => [], uri => 'tel:(999)555-4455;ext=123', canon => 'tel:9995554455;ext=123' },
 	{ tel => "555-555-5555, Ext. 505", global => 0, subscriber => '555-555-5555', ext => 505, context => undef(), isdn => '', params => {}, country => [], uri => 'tel:555-555-5555;ext=505', canon => 'tel:5555555555;ext=505' },
 	{ tel => "416.619.0322 ext.262", global => 0, subscriber => '416.619.0322', ext => '262', context => undef(), isdn => '', params => {}, country => [], uri => 'tel:416.619.0322;ext=262', canon => 'tel:4166190322;ext=262' },
-	{ tel => "notwork", global => 0, subscriber => undef(), ext => undef(), context => undef(), isdn => '', params => {}, country => [], uri => '', canon => '' },
+	{ tel => "notwork", global => 0, subscriber => undef(), ext => undef(), context => undef(), isdn => '', params => {}, country => [], uri => '', canon => '', has_error =~ qr/Unknown telephone number/ },
 	);
 	foreach my $ref ( @tests )
 	{
 		my $tel = URI::tel->new( $ref->{tel} );
 		is( defined( $tel ), 1, $ref->{tel} );
-		is( $tel->is_global, $ref->{global} );
-		is( $tel->subscriber, $ref->{subscriber} );
-		is( $tel->ext, $ref->{ext} );
-		is( $tel->context, $ref->{context} );
-		is( $tel->isub, $ref->{isub} );
+		is( $tel->is_global, $ref->{global}, "Is global for $ref->{tel}"  );
+		is( $tel->subscriber, $ref->{subscriber}, "Subscriber for $ref->{tel}" );
+		is( $tel->ext, $ref->{ext}, "Extension for $ref->{tel}" );
+		is( $tel->context, $ref->{context}, "Context for $ref->{tel}" );
+		is( $tel->isub, $ref->{isub}, "Isub for $ref->{tel}" );
 		if( scalar( keys( %{$ref->{params}} ) ) > 0 )
 		{
 			my $ok = 1;
