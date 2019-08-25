@@ -1,6 +1,6 @@
 ##----------------------------------------------------------------------------
 ## tel.pm
-## Version 0.1
+## Version 0.4
 ## Copyright(c) 2016-2018 Jacques Deguest
 ## Author: Jacques Deguest <jack@deguest.jp>
 ## Created 2016/02/12
@@ -14,16 +14,12 @@ package URI::tel;
 BEGIN
 {
 	use strict;
-    our( $VERSION, @ISA, @EXPORT, @EXPORT_OK, %EXPORT_TAGS );
-    our( $VERBOSE, $DEBUG, $ERROR );
+	use parent 'URI';
+    our( $VERSION, $VERBOSE, $DEBUG, $ERROR );
     our( $RESERVED, $MARK, $UNRESERVED, $PCT_ENCODED, $URIC, $ALPHA, $DIGIT, $ALPHANUM, $HEXDIG );
     our( $PARAM_UNRESERVED, $VISUAL_SEPARATOR, $PHONEDIGIT, $GLOBAL_NUMBER_DIGITS, $PARAMCHAR, $DOMAINLABEL, $TOPLABEL, $DOMAINNAME, $DESCRIPTOR, $PNAME, $PVALUE, $PARAMETER, $EXTENSION, $ISDN_SUBADDRESS, $CONTEXT, $PAR, $PHONEDIGIT_HEX, $GLOBAL_NUMBER, $LOCAL_NUMBER, $OTHER, $TEL_SUBSCRIBER, $TEL_URI );
     our( $COUNTRIES, $IDD_RE );
-    @ISA         = qw( );
-    @EXPORT      = qw( );
-    %EXPORT_TAGS = ();
-    @EXPORT_OK   = qw( );
-    $VERSION     = '0.3';
+    $VERSION     = '0.4';
 	use overload ('""'     => 'as_string',
 				  '=='     => sub { _obj_eq(@_) },
 				  '!='     => sub { !_obj_eq(@_) },
@@ -831,6 +827,14 @@ This is a read-only method. It returns the type of the telephone number. The typ
 
 =back
 
+=head1 SEE ALSO
+
+List of country calling codes: E<lt>F<https://en.wikipedia.org/wiki/List_of_country_calling_codes>E<gt>
+
+=head1 CREDITS
+
+Credits to Thiago Berlitz Rondon for the initial version.
+
 =head1 COPYRIGHT
 
 Copyright (c) 2016-2018 Jacques Deguest E<lt>F<jack@deguest.jp>E<gt>
@@ -854,12 +858,12 @@ IT;ITA;Italy;39
 RO;ROU;Romania;40
 CH;CHE;Switzerland;41
 AT;AUT;Austria;43
-GG;GGY;Guernsey;44
+GG;GGY;Guernsey;44-1481
 GB;GBR;United Kingdom;44
 DK;DNK;Denmark;45
 SE;SWE;Sweden;46
 NO;NOR;Norway;47
-SJ;SJM;Svalbard and Jan Mayen;47
+SJ;SJM;Svalbard and Jan Mayen;47-79
 PL;POL;Poland;48
 DE;DEU;Germany;49
 PE;PER;Peru;51
@@ -968,6 +972,7 @@ BY;BLR;Belarus;375
 AD;AND;Andorra;376
 MC;MCO;Monaco;377
 SM;SMR;San Marino;378
+VA;VAT;Vatican City;379,39-06-698
 UA;UKR;Ukraine;380
 RS;SRB;Serbia;381
 ME;MNE;Montenegro;382
@@ -999,7 +1004,7 @@ PY;PRY;Paraguay;595
 MQ;MTQ;Martinique;596
 SR;SUR;Suriname;597
 UY;URY;Uruguay;598
-BQ;BES;Bonaire, Sint Eustatius and Saba;599
+BQ;BES;Bonaire, Sint Eustatius and Saba;599-3,599-4,599-7
 TL;TLS;Timor-Leste;670
 AQ;ATA;Antarctica;672
 NF;NFK;Norfolk Island;672
@@ -1084,8 +1089,8 @@ JE;JEY;Jersey;44-1534
 IM;IMN;Isle of Man;44-1624
 FK;FLK;Falkland Islands;500
 CW;CUW;Curaçao;599-9
-CX;CXR;Christmas Island;61-8
-CC;CCK;Cocos (Keeling) Islands;61-8
+CX;CXR;Christmas Island;61-8-9164
+CC;CCK;Cocos (Keeling) Islands;61-8-9162
 PN;PCN;Pitcairn;64
 RU;RUS;Russia;7
 KZ;KAZ;Kazakhstan;7-6,7-7
