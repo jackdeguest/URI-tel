@@ -1,17 +1,37 @@
+use ExtUtils::MakeMaker;
 use strict;
 use warnings;
-use ExtUtils::MakeMaker;
 
-WriteMakefile(
+# Call 'perldoc ExtUtils::MakeMaker' for details of how to influence
+# the contents of the Makefile that is written.
+
+my %WriteMakefileArgs = (
     NAME                => 'URI::tel',
-    AUTHOR              => 'Jacques Deguest <jack@deguest.jp>',
     VERSION_FROM        => 'lib/URI/tel.pm',
-    ABSTRACT_FROM       => 'lib/URI/tel.pm',
-    PL_FILES            => {},
-    PREREQ_PM 			=> {
-    	'overload'		=> '1.22',
-    	'overloading'	=> '0.02',
+    AUTHOR              => 'Jacques Deguest (jack@deguest.jp)',
+    ABSTRACT            => 'Implementation of rfc3966 for tel URI',
+    INSTALLDIRS         => ($] < 5.011 ? 'perl' : 'site'),
+    PREREQ_PM           => {
+        'Test::More' => 0,
+        'URI' => 0
     },
-    dist                => { COMPRESS => 'gzip -9f', SUFFIX => 'gz', },
-    clean               => { FILES => 'URI-tel-*' },
+    LICENSE				=> 'perl_5',
+    MIN_PERL_VERSION	=> 5.6.0,
+    ( eval { ExtUtils::MakeMaker->VERSION(6.46) } ? () : ( META_MERGE => {
+        'meta-spec' => { version => 2 },
+        dynamic_config => 1,
+        resources => {
+        #    homepage    => undef,
+            repository  => {
+                url         => 'git@github.com:jackdeguest/URI-tel.git',
+                web         => 'https://github.com/jackdeguest/URI-tel',
+                type        => 'git',
+            },
+        #    bugtracker => {
+        #        web         => undef,
+        #    },
+        },
+    })),
 );
+
+WriteMakefile(%WriteMakefileArgs);
