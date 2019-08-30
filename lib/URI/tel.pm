@@ -1,10 +1,10 @@
 ##----------------------------------------------------------------------------
 ## tel.pm
-## Version 0.7
+## Version 0.8
 ## Copyright(c) 2016-2019 Jacques Deguest
 ## Author: Jacques Deguest <jack@deguest.jp>
 ## Created 2016/02/12
-## Modified 2019/08/26
+## Modified 2019/08/30
 ## All rights reserved.
 ## 
 ## This program is free software; you can redistribute it and/or modify it 
@@ -19,7 +19,7 @@ BEGIN
     our( $RESERVED, $MARK, $UNRESERVED, $PCT_ENCODED, $URIC, $ALPHA, $DIGIT, $ALPHANUM, $HEXDIG );
     our( $PARAM_UNRESERVED, $VISUAL_SEPARATOR, $PHONEDIGIT, $GLOBAL_NUMBER_DIGITS, $PARAMCHAR, $DOMAINLABEL, $TOPLABEL, $DOMAINNAME, $DESCRIPTOR, $PNAME, $PVALUE, $PARAMETER, $EXTENSION, $ISDN_SUBADDRESS, $CONTEXT, $PAR, $PHONEDIGIT_HEX, $GLOBAL_NUMBER, $LOCAL_NUMBER, $OTHER, $TEL_SUBSCRIBER, $TEL_URI );
     our( $COUNTRIES, $IDD_RE );
-    $VERSION     = '0.7';
+    $VERSION     = '0.8';
 	use overload ('""'     => 'as_string',
 				  '=='     => sub { _obj_eq(@_) },
 				  '!='     => sub { !_obj_eq(@_) },
@@ -343,10 +343,11 @@ sub country
 	my $idd = substr( $self->{ 'subscriber' }, 0, 1 ) eq '+' ? $self->{ 'subscriber' } : substr( $self->{ 'context' }, 0, 1 ) eq '+' ? $self->{ 'context' } : '';
 	## Something like +33(0)3-45-67-89-12 or +33-345-67-89-12
 	## Make sure we got a phone number without any visual separator
-	my $uri = $self->canonical;
-	$idd = substr( $uri->{ 'subscriber' }, 0, 1 ) eq '+' ? $uri->{ 'subscriber' } : substr( $uri->{ 'context' }, 0, 1 ) eq '+' ? $uri->{ 'context' } : '';
+	#my $uri = $self->canonical;
+	#my $idd = substr( $uri->{ 'subscriber' }, 0, 1 ) eq '+' ? $uri->{ 'subscriber' } : substr( $uri->{ 'context' }, 0, 1 ) eq '+' ? $uri->{ 'context' } : '';
 	## Remove the '+'
-	$idd = substr( $idd, 1 );
+	$idd = substr( $idd, 1 ) if( length( $idd ) );
+	return( wantarray() ? () : [] ) if( !length( $idd ) );
 	foreach my $k ( %$hash )
 	{
 		next if( length( $k ) > length( $idd ) );
@@ -368,7 +369,6 @@ sub error
     my $level = 0;
     my $caller = caller;
     my $err   = join( '', @_ );
-    my $hash  = $self->_obj2h;
     my $class = ref( $self ) || $self;
     if( $err && length( $err ) )
     {
@@ -380,10 +380,10 @@ sub error
         }
         my( $pack, $file, $line ) = caller( $frame );
         $err =~ s/\n$//gs;
-        $hash->{ 'error' } = ${ $class . '::ERROR' } = $err;
+        $self->{ 'error' } = ${ $class . '::ERROR' } = $err;
         return( undef() );
     }
-    return( $hash->{ 'error' } || $ERROR );
+    return( $self->{ 'error' } || $ERROR );
 }
 
 *extension = \&ext;
@@ -613,29 +613,11 @@ sub _load_countries
 	}
 }
 
-sub _obj2h
-{
-    my $self = shift( @_ );
-    if( UNIVERSAL::isa( $self, 'HASH' ) )
-    {
-        return( $self );
-    }
-    elsif( UNIVERSAL::isa( $self, 'GLOB' ) )
-    {
-        return( \%{*$self} );
-    }
-    ## Because object may be accessed as My::Package->method or My::Package::method
-    ## there is not always an object available, so we need to fake it to avoid error
-    ## This is primarly itended for generic methods error(), errstr() to work under any conditions.
-    else
-    {
-        return( {} );
-    }
-}
-
 1;
 
 __DATA__
+=encoding utf8
+
 =head1 NAME
 
 URI::tel - Implementation of rfc3966 for tel URI
