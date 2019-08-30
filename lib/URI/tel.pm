@@ -139,36 +139,29 @@ sub new
 		warn( $ERROR );
 	}
 	
-	if( $str =~ /^(?:tel\:)?\+/ )
-	{
-		## Extract the global idd
-		$this->_load_countries;
-		( my $str2 = $str ) =~ s/[\Q$VISUAL_SEPARATOR\E]+//g;
-		$str2 =~ s/^tel\://;
-		if( $str2 =~ /^\+($IDD_RE)/ )
-		{
-			my $idd = $1;
-			if( CORE::exists( $COUNTRIES->{ $idd } ) )
-			{
-				my $idds = $COUNTRIES->{ $idd }->[0]->{ 'idd' };
-				foreach my $thisIdd ( @$idds )
-				{
-					my $check = $thisIdd;
-					$check =~ s/\D//g;
-					if( $check eq $idd )
-					{
-						$temp->{ 'context' } = '+' . $thisIdd;
-						last;
-					}
-				}
-			}
-		}
-	}
-	
 	## The component name for each match
 	@$temp{ @names } = @matches;
+	
 	$temp->{ 'params' } = $temp->{ 'params1' } ? $temp->{ 'params1' } : $temp->{ 'params2' } if( !length( $temp->{ 'params' } ) );
 	$temp->{ 'context' } =~ s/;[^=]+=(.*?)$/$1/gs;
+	
+	if( $str =~ /^(?:tel\:)?\+/ )
+	{
+		$temp->{ 'intl_code' } = $this->_extract_intl_code( $str );
+	}
+	elsif( $temp->{ 'context' } && 
+		$temp->{ 'context' } !~ /^[a-zA-Z]/ &&
+		substr( $temp->{ 'context' }, 0, 1 ) eq '+' )
+	{
+		$temp->{ 'intl_code' } = $this->_extract_intl_code( $temp->{ 'context' } );
+		## We flag it as extracted from context, because we do not want to prepend the subscriber number with it.
+		## It's just too dangerous as we cannot tell the subscriber number is actually a proper number that can be dialed from outside e.g. 911 or 110 are emergency number who may heva a context with international code
+		## However, if the international code was provided by the user then that's his responsibility
+		## If the user wants to just provide some context, then better to use context() instead.
+		## Knowing the international code helps getting some other useful information, but it should not necessarily affect the format of the number
+		$temp->{ '_intl_code_from_context' } = 1;
+	}
+	$temp->{ 'context' } = '+' . $temp->{ 'intl_code' } if( !length( $temp->{ 'context' } ) && length( $temp->{ 'intl_code' } ) );
 	
 	my $hash  = {
 	'original'		=> ( $orig ne $str ) ? $orig : $temp->{ 'all' },
@@ -180,6 +173,8 @@ sub new
 	'params'		=> $temp->{ 'params' },
 	'last_param'	=> $temp->{ 'last_param' } ? $temp->{ 'last_param' } : $temp->{ 'last_param1' } ? $temp->{ 'last_param1' } : $temp->{ 'last_param2' },
 	'context'		=> $temp->{ 'context' },
+	'intl_code'		=> $temp->{ 'intl_code' },
+	'_intl_code_from_context' => $temp->{ '_intl_code_from_context' },
 	};
 	my $self  = bless( $hash, $class );
 	my $prams = [];
@@ -213,6 +208,8 @@ sub new
 	$self->{ 'private' } = $priv;
 	$self->{ 'ext' } = $temp->{ 'ext' } if( !length( $hash->{ 'ext' } ) && !$self->{ 'is_vanity' } );
 	$self->{ 'ext' } =~ s/\D//gs;
+	## Because a context may be +81 or it could be a domain name example.com
+	## if we had it as a parameter at instantiation, we remember it and honour it when we stringify
 	$self->{ '_prepend_context' } = $temp->{ '_has_context_param' } ? 0 : 1;
 	return( $self );
 }
@@ -231,9 +228,17 @@ sub as_string
 		{
 			push( @params, sprintf( "phone-context=%s", $self->{ 'context' } ) );
 		}
+		## Context is not some domain name
 		elsif( $self->{ 'subscriber' } !~ /^\+\d+/ && $self->{ 'context' } !~ /[a-zA-Z]+/ )
 		{
-			@uri = ( 'tel:' . $self->{ 'context' } . '.' . $self->{ 'subscriber' } );
+			@uri = ( 'tel:' . $self->{ 'context' } . '-' . $self->{ 'subscriber' } );
+		}
+	}
+	if( length( $self->{ 'intl_code' } ) && !$self->{ '_intl_code_from_context' } )
+	{
+		if( $self->{ 'subscriber' } !~ /^\+\d+/ && $uri[0] !~ /^tel\:\+/ )
+		{
+			@uri = ( 'tel:' . '+' . $self->{ 'intl_code' } . '-' . $self->{ 'subscriber' } );
 		}
 	}
 	my $priv = $self->{ 'private' };
@@ -275,8 +280,10 @@ sub canonical
 	$uri->ext( $self->{ 'ext' } ) if( length( $self->{ 'ext' } ) );
 	$uri->isub( $self->{ 'isdn_subaddress' } ) if( length( $self->{ 'isdn_subaddress' } ) );
 	$uri->context( $self->{ 'context' } ) if( length( $self->{ 'context' } ) );
+	$uri->international_code( $self->{ 'intl_code' } ) if( length( $self->{ 'intl_code' } ) );
 	$uri->{_has_context_param} = $self->{_has_context_param};
 	$uri->{_prepend_context} = $self->{_prepend_context};
+	$uri->{_intl_code_from_context} = $self->{_intl_code_from_context};
 	my $priv = $self->{ 'private' };
 	%{$uri->{ 'private' }} = %$priv;
 	return( $uri );
@@ -338,29 +345,53 @@ sub context
 sub country
 {
 	my $self = shift( @_ );
+	no overloading;
 	$self->_load_countries;
 	my $hash = $COUNTRIES;
-	my $idd = substr( $self->{ 'subscriber' }, 0, 1 ) eq '+' ? $self->{ 'subscriber' } : substr( $self->{ 'context' }, 0, 1 ) eq '+' ? $self->{ 'context' } : '';
-	## Something like +33(0)3-45-67-89-12 or +33-345-67-89-12
-	## Make sure we got a phone number without any visual separator
-	#my $uri = $self->canonical;
-	#my $idd = substr( $uri->{ 'subscriber' }, 0, 1 ) eq '+' ? $uri->{ 'subscriber' } : substr( $uri->{ 'context' }, 0, 1 ) eq '+' ? $uri->{ 'context' } : '';
-	## Remove the '+'
-	$idd = substr( $idd, 1 ) if( length( $idd ) );
-	return( wantarray() ? () : [] ) if( !length( $idd ) );
-	foreach my $k ( %$hash )
+	my $code = $self->international_code;
+	return( wantarray() ? () : [] ) if( !length( $code ) );
+	$code =~ s/[\Q$VISUAL_SEPARATOR\E]+//g;
+	if( $code =~ /^\+($IDD_RE)/ )
 	{
-		next if( length( $k ) > length( $idd ) );
-		## We found a match
-		## We return all the countries that match the international prefix
-		if( substr( $idd, 0, length( $k ) ) eq $k )
-		{	
-			my $ref = $hash->{ $k };
-			return( wantarray() ? @$ref : \@$ref );
-		}
+		$code = $1;
 	}
-	## We got here, nothing found
-	return( wantarray() ? () : [] );
+	return( wantarray() ? () : [] ) if( !exists( $hash->{ $code } ) );
+	my $ref = $hash->{ $code };
+	return( wantarray() ? @$ref : \@$ref );
+}
+
+sub country_code
+{
+    my $self = shift( @_ );
+    my $ref  = $self->country_codes;
+    return( '' ) if( ref( $ref ) ne 'ARRAY' );
+    return( $ref->[0] );
+}
+
+sub country_codes
+{
+    my $self = shift( @_ );
+    my $ref  = $self->country;
+    return( '' ) if( ref( $ref ) ne 'ARRAY' );
+    my @codes = map( $_->{cc}, @$ref );
+    return( wantarray() ? @codes : \@codes );
+}
+
+sub country_name
+{
+    my $self = shift( @_ );
+    my $ref  = $self->country_names;
+    return( '' ) if( ref( $ref ) ne 'ARRAY' );
+    return( $ref->[0] );
+}
+
+sub country_names
+{
+    my $self = shift( @_ );
+    my $ref  = $self->country;
+    return( '' ) if( ref( $ref ) ne 'ARRAY' );
+    my @names = map( $_->{name}, @$ref );
+    return( wantarray() ? @names : \@names );
 }
 
 sub error
@@ -403,6 +434,26 @@ sub ext
 		$self->{ 'ext' } = $val;
 	}
 	return( $self->{ 'ext' } );
+}
+
+sub international_code
+{
+	my $self = shift( @_ );
+	if( @_ )
+	{
+		my $val = shift( @_ );
+		if( length( $val ) && $val !~ /^[$PHONEDIGIT]+$/ )
+		{
+			warn( "'$val' is not a valid international code.\n" );
+			return( undef() );
+		}
+		delete( $self->{ 'cache' } );
+		## The international code was provided by the user as opposed to using the context() method,
+		## so we flag it properly so it can be used in stringification of the phone number
+		$self->{ '_intl_code_from_context' } = 0;
+		$self->{ 'intl_code' } = $val;
+	}
+	return( $self->{ 'intl_code' } );
 }
 
 sub is_global
@@ -517,6 +568,41 @@ sub subscriber
 sub type
 {
 	return( shift->{ 'type' } );
+}
+
+sub _extract_intl_code
+{
+	my $self = shift( @_ );
+	my $str  = shift( @_ ) || return( '' );
+	#print( STDERR "Trying to find international code from '$str'\n" );
+	my $code;
+	## Extract the global idd
+	$self->_load_countries;
+	( my $str2 = $str ) =~ s/[\Q$VISUAL_SEPARATOR\E]+//g;
+	$str2 =~ s/^tel\://;
+	if( $str2 =~ /^\+($IDD_RE)/ )
+	{
+		my $idd = $1;
+		#print( STDERR "\tIDD is '$idd'\n" );
+		if( CORE::exists( $COUNTRIES->{ $idd } ) )
+		{
+			my $idds = $COUNTRIES->{ $idd }->[0]->{ 'idd' };
+			#print( STDERR "\tFound entry.\n" );
+			foreach my $thisIdd ( @$idds )
+			{
+				my $check = $thisIdd;
+				$check =~ s/\D//g;
+				if( $check eq $idd )
+				{
+					#$temp->{ 'context' } = '+' . $thisIdd;
+					$code = $thisIdd;
+					last;
+				}
+			}
+		}
+	}
+	#print( STDERR "\tReturning '$code'\n" );
+	return( $code );
 }
 
 # Check if two objects are the same object
